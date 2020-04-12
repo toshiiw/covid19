@@ -28,64 +28,95 @@ def load_prefpop():
     print(pp)
     return pp
 
-def plot(files, diff=False, log=False):
-    fontsetup()
-    prefpop = load_prefpop()
-    labels = []
-    cases = []
-    for fn in files:
-        c1 = {}
-        labels.append(fn.split('.')[0])
-        with open(fn) as f:
-            cr = csv.reader(f)
-            for r in cr:
-                if len(r) == 0:
-                   continue
-                if r[0] in c1:
-                    raise ValueError("Duplicated key: " + r[0])
-                c1[r[0]] = int(r[1])
-        cases.append(c1)
-    k = set()
-    for c1 in cases:
-        k |= set(c1.keys())
-    kl = list(k)
-    kl.sort(key=lambda x: max([c.get(x,0) for c in cases]), reverse=True)
-    if diff:
-        for i in range(len(cases)-1):
-            for k in kl:
-                cases[i][k] = cases[i+1].get(k, 0) - cases[i].get(k, 0)
-        cases.pop()
-        labels = labels[1:]
-    print((k, cases))
-    x = np.arange(len(kl))
+class Plotter:
+    def __init__(self, files):
+        self.labels = []
+        cases = []
+        for fn in files:
+            c1 = {}
+            self.labels.append(fn.split('.')[0])
+            with open(fn) as f:
+                cr = csv.reader(f)
+                for r in cr:
+                    if len(r) == 0:
+                       continue
+                    if r[0] in c1:
+                        raise ValueError("Duplicated key: " + r[0])
+                    c1[r[0]] = int(r[1])
+            cases.append(c1)
+        k = set()
+        for c1 in cases:
+            k |= set(c1.keys())
+        self.kl = list(k)
+        self.kl.sort(key=lambda x: max([c.get(x,0) for c in cases]), reverse=True)
+        print((k, cases))
+        self.cases = []
+        for k in self.kl:
+            self.cases.append((k, [c.get(k, 0) for c in cases]))
+        print(self.cases)
+        self.prefpop = load_prefpop()
 
-    width = .7 / len(labels)
-    f, (ax1, ax2) = plt.subplots(2, 1)
-    if diff:
-        ax1.set_ylabel("new cases")
-    else:
-        ax1.set_ylabel("cases")
-    xoff = -.5 * width * (len(labels) - 1)
-    for c1, l1 in zip(cases, labels):
-        if not diff:
-            ax1.bar(x + xoff, [c1.get(k, 0) for k in kl], width, label=l1)
-        ax2.bar(x + xoff, [1e3*c1.get(k, 0)/prefpop[k] for k in kl], width, label=l1)
-        xoff += width
-    if diff:
-        xl = np.arange(len(labels)) * width - .5 * width * (len(labels) - 1)
-        for i, k in enumerate(kl):
-            ax1.plot(xl + i, [c1.get(k, 0) for c1 in cases])
+    def plot(self, diff=False, log=False):
+        fontsetup()
+        if diff:
+            self.labels = self.labels[1:]
+        x = np.arange(len(self.kl))
 
-    ax2.set_ylabel("ppm")
-    for a in [ax1, ax2]:
-        a.grid()
-        a.set_xticks(x)
-        a.set_xticklabels(kl)
+        width = .7 / len(self.labels)
+        f, (ax1, ax2) = plt.subplots(2, 1)
+        if diff:
+            ax1.set_ylabel("new cases")
+        else:
+            ax1.set_ylabel("cases")
+        xoff = -.5 * width * (len(self.labels) - 1)
+        for i, l1 in enumerate(self.labels):
+            if not diff:
+                ax1.bar(x + xoff, [v[i] for k, v in self.cases], width, label=l1)
+            ax2.bar(x + xoff, [1e3*v[i]/self.prefpop[k] for k, v in self.cases], width, label=l1)
+            xoff += width
+
+        if diff:
+            xl = np.arange(len(self.labels)) * width - .5 * width * (len(self.labels) - 1)
+            for i, kv in enumerate(self.cases):
+                v = []
+                for j in range(len(kv[1])-1):
+                    v.append(kv[1][j+1] - kv[1][j])
+                ax1.plot(xl + i, v)
+
+        ax2.set_ylabel("ppm")
+        for a in [ax1, ax2]:
+            a.grid()
+            a.set_xticks(x)
+            a.set_xticklabels(self.kl)
+            if log:
+                a.set_yscale('log')
+            a.legend()
+        plt.show()
+
+    def overlapplot(self, log=False, ppm=False, threshold=20):
+        fontsetup()
+        f, a = plt.subplots(1,1)
+        for k, v in self.cases:
+            try:
+                i = 0
+                while v[i] < threshold:
+                    i += 1
+            except IndexError:
+                continue
+            data = np.array(v[i:])
+            if ppm:
+                data = data * 1e3 / self.prefpop[k]
+            a.plot(data, label=k)
         if log:
             a.set_yscale('log')
+        a.grid()
+        if ppm:
+            a.set_ylabel("ppm")
+        else:
+            a.set_ylabel("cases")
+        a.set_xlabel("days")
         a.legend()
-    plt.show()
-
+        plt.show()
 def zplot(files):
     prefpop = load_prefpop()
     fontsetup()
@@ -104,8 +135,9 @@ def zplot(files):
     plt.show()
     
 if __name__ == '__main__':
-    opts, args = getopt.getopt(sys.argv[1:], 'dlrz')
+    opts, args = getopt.getopt(sys.argv[1:], 'dlorz')
     plotargs = {}
+    overlap = False
     zero = False
     for o, a in opts:
         if o == '-r':
@@ -114,10 +146,17 @@ if __name__ == '__main__':
             plotargs['diff'] = True
         elif o == '-l':
             plotargs['log'] = True
+        elif o == '-o':
+            overlap = True
         elif o == '-z':
             zero = True
 
-    if not zero:
-        plot(args, **plotargs)
-    else:
+    if zero:
         zplot(args)
+    else:
+        p = Plotter(args)
+        if overlap:
+            p.overlapplot(**plotargs)
+            p.overlapplot(**plotargs, ppm=True)
+        else:
+            p.plot(**plotargs)
