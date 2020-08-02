@@ -17,7 +17,6 @@ example:
 #!/bin/sh
 
 d=`date +%m%d`
-wget -O tokyo-confirmed-$d.html https://stopcovid19.metro.tokyo.lg.jp/cards/number-of-confirmed-cases
-wget -O tokyo-positive-diagnosed-$d.html https://stopcovid19.metro.tokyo.lg.jp/cards/positive-number-by-diagnosed-date
+wget -O tokyo-cards-$d.js https://stopcovid19.metro.tokyo.lg.jp/_nuxt/commons/cards.card~index.c4d9462.js
 python3 tokyoparse2.py -o -1  ../Downloads/covid19/tokyo-positive-diagnosed-$d.html ../Downloads/covid19/tokyo-confirmed-$d.html
 ```
